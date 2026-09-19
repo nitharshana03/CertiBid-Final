@@ -1,6 +1,16 @@
 // CertiBid AI - Axios API Service Client
 import axios from 'axios';
 import {
+  downloadFileFromApi,
+  triggerBrowserBlobDownload,
+  downloadCertificate,
+  downloadAwardCertificate,
+  downloadTenderDoc,
+  downloadBidProposal,
+  downloadReceiptPdf,
+  downloadReport
+} from '../utils/fileDownload';
+import {
   mockTenders,
   mockVendors,
   mockBids,
@@ -604,8 +614,13 @@ export const apiService = {
       if (userObj?.role) headers['X-User-Role'] = userObj.role;
 
       const res = await apiClient.post('/documents/upload', docData, { headers });
-      if (res.data) return { data: res.data, status: res.status };
-    } catch (e) {}
+      if (res.data) {
+        documentsState.unshift(res.data);
+        return { data: res.data, status: res.status };
+      }
+    } catch (e) {
+      console.warn("Server upload failed, using fallback:", e);
+    }
     await delay();
 
     const savedUserStr = localStorage.getItem('certibid_user');
@@ -615,8 +630,11 @@ export const apiService = {
     }
 
     const newDocId = `DOC-${Math.floor(1000 + Math.random() * 9000)}`;
-    const title = docData.title || docData.name || 'Company Document';
+    const title = docData.title || docData.name || (docData.fileName ? docData.fileName.replace(/\.[^/.]+$/, "") : 'Company Registration Certificate');
     const docType = docData.documentType || docData.type || 'Compliance Certificate';
+    const rawFileName = docData.fileName || `${title.replace(/\s+/g, '_')}.pdf`;
+    const ext = rawFileName.toLowerCase().split('.').pop() || 'pdf';
+    const fileType = ext === 'png' ? 'PNG' : (ext === 'jpg' || ext === 'jpeg') ? 'JPG' : 'PDF';
 
     const newDoc = {
       id: newDocId,
@@ -625,17 +643,51 @@ export const apiService = {
       vendorId: user?.bidderId || user?.vendorId || 'VND-10029',
       vendorName: user?.organization || user?.companyName || user?.name || 'Bidder Entity',
       uploadedByEmail: user?.email || '',
-      fileName: docData.fileName || `${title.replace(/\s+/g, '_')}.pdf`,
-      fileUrl: '#',
-      status: 'Under Review',
-      uploadedAt: new Date().toISOString().split('T')[0],
-      aiConfidence: 94,
-      verifiedBy: 'AI System Verification',
+      fileName: rawFileName,
+      fileType: fileType,
+      fileSize: docData.fileSize || '1.2 MB',
+      fileUrl: `/api/v1/documents/file/${newDocId}`,
+      status: 'Verified / Uploaded',
+      uploadedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      aiConfidence: 98,
+      verifiedBy: 'CertiBid AI System',
       resubmissionReason: ''
     };
 
     documentsState.unshift(newDoc);
     return { data: newDoc, status: 201 };
+  },
+
+  getDocumentFileUrl(id, download = false) {
+    return `/api/files/${id}${download ? '/download' : ''}`;
+  },
+
+  async downloadFile(fileId, defaultFilename) {
+    return await downloadFileFromApi(`/api/files/${fileId}/download`, defaultFilename);
+  },
+
+  async downloadDocument(docId, fileName) {
+    return await downloadCertificate(docId, fileName);
+  },
+
+  async downloadAwardCertificate(tenderId, fileName) {
+    return await downloadAwardCertificate(tenderId, fileName);
+  },
+
+  async downloadTenderDoc(tenderId, tenderTitle) {
+    return await downloadTenderDoc(tenderId, tenderTitle);
+  },
+
+  async downloadBidProposal(bidId, bidderName) {
+    return await downloadBidProposal(bidId, bidderName);
+  },
+
+  async downloadReceiptPdf(txnOrId) {
+    return await downloadReceiptPdf(txnOrId);
+  },
+
+  async downloadReport(reportType, format) {
+    return await downloadReport(reportType, format);
   },
 
   async deleteDocument(id) {
@@ -685,12 +737,41 @@ export const apiService = {
   },
 
   async updateDocumentStatus(id, status, resubmissionReason = '') {
+    const savedUserStr = localStorage.getItem('certibid_user');
+    let userObj = null;
+    if (savedUserStr) {
+      try { userObj = JSON.parse(savedUserStr); } catch (e) {}
+    }
+    const headers = {};
+    if (userObj?.email) headers['X-User-Email'] = userObj.email;
+    if (userObj?.role) headers['X-User-Role'] = userObj.role;
+
     try {
-      const res = await apiClient.put(`/documents/${id}/status`, { status, resubmissionReason });
-      if (res.data) return { data: res.data, status: res.status };
-    } catch (e) {}
+      const res = await apiClient.put(`/documents/${id}/status`, { status, resubmissionReason }, { headers });
+      if (res.data) {
+        const updatedDoc = res.data.document || res.data;
+        documentsState = documentsState.map(d => d.id === id ? { ...d, ...updatedDoc } : d);
+        return { data: updatedDoc, status: res.status };
+      }
+    } catch (e) {
+      if (e.response && (e.response.status === 403 || e.response.status === 400)) {
+        throw new Error(e.response.data?.message || 'Failed to update document audit status');
+      }
+    }
     await delay();
-    documentsState = documentsState.map(d => d.id === id ? { ...d, status, resubmissionReason } : d);
+    const rawStatus = (status || 'APPROVED').toString().toUpperCase().trim();
+    const normalizedStatus = rawStatus.includes('REJECT') ? 'REJECTED' : rawStatus.includes('PENDING') ? 'PENDING_REVIEW' : 'APPROVED';
+
+    documentsState = documentsState.map(d => d.id === id ? {
+      ...d,
+      status: normalizedStatus,
+      resubmissionReason,
+      verifiedBy: `${userObj?.name || 'Officer'} (${userObj?.role || 'OFFICER'})`,
+      reviewedBy: userObj?.name || 'Procurement Desk',
+      reviewedByRole: userObj?.role || 'OFFICER',
+      reviewedAt: new Date().toISOString()
+    } : d);
+
     return { data: documentsState.find(d => d.id === id), status: 200 };
   },
 
@@ -1284,5 +1365,88 @@ export const apiService = {
     }
 
     return { data: { success: true, message: 'Settings saved successfully.', settings: settingsData }, status: 200 };
+  },
+
+  // --- SUPPORT & HELPDESK API ---
+  async getSupportRequests(params = {}) {
+    const savedUserStr = localStorage.getItem('certibid_user');
+    let userObj = null;
+    if (savedUserStr) {
+      try { userObj = JSON.parse(savedUserStr); } catch (e) {}
+    }
+    const headers = {};
+    if (userObj?.email) headers['X-User-Email'] = userObj.email;
+    if (userObj?.role) headers['X-User-Role'] = userObj.role;
+
+    try {
+      const res = await apiClient.get('/support', { params, headers });
+      if (res.data && Array.isArray(res.data)) return { data: res.data, status: res.status };
+    } catch (e) {}
+    await delay(100);
+
+    return { data: [], status: 200 };
+  },
+
+  async createSupportRequest(ticketData) {
+    const savedUserStr = localStorage.getItem('certibid_user');
+    let userObj = null;
+    if (savedUserStr) {
+      try { userObj = JSON.parse(savedUserStr); } catch (e) {}
+    }
+    const headers = {};
+    if (userObj?.email) headers['X-User-Email'] = userObj.email;
+    if (userObj?.role) headers['X-User-Role'] = userObj.role;
+
+    try {
+      const res = await apiClient.post('/support', ticketData, { headers });
+      if (res.data) return { data: res.data, status: res.status };
+    } catch (e) {
+      if (e.response?.data?.message) {
+        throw new Error(e.response.data.message);
+      }
+    }
+    await delay(200);
+
+    const newTicket = {
+      id: `SUP-${Math.floor(1000 + Math.random() * 9000)}`,
+      userId: userObj?.id || userObj?.bidderId || 'usr-vendor-001',
+      userEmail: userObj?.email || 'vendor@certibid.com',
+      userName: userObj?.name || 'Bidder',
+      vendorId: userObj?.bidderId || userObj?.vendorId || 'VND-10029',
+      vendorName: userObj?.organization || userObj?.companyName || userObj?.name || 'Bidder Entity',
+      category: ticketData.category || 'General Inquiry',
+      subject: ticketData.subject || 'Helpdesk Inquiry',
+      priority: ticketData.priority || 'Medium',
+      message: ticketData.message || '',
+      status: 'OPEN',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      responses: []
+    };
+
+    return { data: newTicket, status: 201 };
+  },
+
+  async updateSupportRequest(id, updates) {
+    const savedUserStr = localStorage.getItem('certibid_user');
+    let userObj = null;
+    if (savedUserStr) {
+      try { userObj = JSON.parse(savedUserStr); } catch (e) {}
+    }
+    const headers = {};
+    if (userObj?.email) headers['X-User-Email'] = userObj.email;
+    if (userObj?.role) headers['X-User-Role'] = userObj.role;
+
+    try {
+      const res = await apiClient.put(`/support/${id}`, updates, { headers });
+      if (res.data) return { data: res.data.ticket || res.data, status: res.status };
+    } catch (e) {
+      if (e.response?.data?.message) {
+        throw new Error(e.response.data.message);
+      }
+    }
+    await delay(200);
+
+    return { data: { id, ...updates, updatedAt: new Date().toISOString() }, status: 200 };
   }
 };

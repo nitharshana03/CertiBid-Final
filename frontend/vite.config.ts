@@ -539,6 +539,50 @@ const initialAuditLogsSeed: any[] = [
   }
 ];
 
+const initialSupportSeed: any[] = [
+  {
+    id: 'SUP-1001',
+    userId: 'usr-vendor-001',
+    userEmail: 'vendor@certibid.com',
+    userName: 'Acme Construction Services',
+    vendorId: 'VND-10029',
+    vendorName: 'Acme Construction Services',
+    category: 'Document Verification',
+    subject: 'Corporate Tax Clearance Verification Inquiry',
+    priority: 'Medium',
+    message: 'We uploaded our updated FY26 Corporate Tax Clearance Certificate. Please confirm if additional digital notary attestation is required.',
+    status: 'IN_PROGRESS',
+    createdAt: '2026-08-10T10:30:00.000Z',
+    updatedAt: '2026-08-11T14:20:00.000Z',
+    responses: [
+      {
+        id: 'REP-101',
+        authorName: 'Sarah Connor',
+        authorRole: 'OFFICER',
+        authorEmail: 'officer@certibid.com',
+        message: 'Our compliance desk is currently validating the tax certificate against the state revenue portal. No additional notary attestation is needed.',
+        createdAt: '2026-08-11T14:20:00.000Z'
+      }
+    ]
+  },
+  {
+    id: 'SUP-1002',
+    userId: 'usr-bidder-1786671324278',
+    userEmail: 'vendor1@certibid.com',
+    userName: 'Viniyoganitharsana B',
+    vendorId: 'VND-26615',
+    vendorName: 'vini',
+    category: 'EMD Payment',
+    subject: 'EMD Deposit Receipt Confirmation for TND-2026-8901',
+    priority: 'High',
+    message: 'We submitted the EMD payment for Smart City Traffic Surveillance tender. Kindly verify if the bank challan acknowledgment has been indexed.',
+    status: 'OPEN',
+    createdAt: '2026-08-12T09:15:00.000Z',
+    updatedAt: '2026-08-12T09:15:00.000Z',
+    responses: []
+  }
+];
+
 const initialTransactionsSeed: any[] = [
   {
     id: 'TXN-EMD-882910',
@@ -697,6 +741,12 @@ function getDb() {
         if (!parsed.auditLogs || parsed.auditLogs.length === 0) {
           parsed.auditLogs = initialAuditLogsSeed;
         }
+        if (!parsed.supportRequests || parsed.supportRequests.length === 0) {
+          parsed.supportRequests = initialSupportSeed;
+        }
+        if (!parsed.documents || parsed.documents.length === 0) {
+          parsed.documents = initialDocumentsSeed;
+        }
         saveDb(parsed);
         return parsed;
       }
@@ -714,7 +764,8 @@ function getDb() {
     tenders: initialTendersSeed,
     escalations: initialEscalationsSeed,
     notifications: initialNotificationsSeed,
-    auditLogs: initialAuditLogsSeed
+    auditLogs: initialAuditLogsSeed,
+    supportRequests: initialSupportSeed
   };
 
   saveDb(initialDb);
@@ -1879,24 +1930,625 @@ const apiMockPlugin = () => {
           }
         }
 
-        // --- DOCUMENTS API WITH STRICT BIDDER OWNERSHIP ENFORCEMENT ---
+        // --- UNIVERSAL PDF GENERATOR ENGINE FOR CERTIFICATES, TENDERS, BIDS, AWARDS & RECEIPTS ---
+        function generateStandardPdf(docConfig: {
+          title: string;
+          subtitle?: string;
+          docNumber?: string;
+          statusBadge?: string;
+          metadata?: Array<{ label: string; value: string }>;
+          sections?: Array<{ title: string; lines: string[] }>;
+          footer?: string;
+        }): Buffer {
+          const textOps: string[] = [];
+          
+          // Header background decorative bar
+          textOps.push('0.04 0.20 0.26 rg'); // Primary Deep Teal
+          textOps.push('BT /F1 15 Tf 45 745 Td (' + (docConfig.title || 'CertiBid AI Official Document').replace(/[\(\)\\\r\n]/g, ' ') + ') Tj ET');
+          
+          if (docConfig.subtitle) {
+            textOps.push('0.08 0.55 0.58 rg'); // Cyan Teal
+            textOps.push('BT /F2 9.5 Tf 45 728 Td (' + docConfig.subtitle.replace(/[\(\)\\\r\n]/g, ' ') + ') Tj ET');
+          }
+
+          if (docConfig.statusBadge) {
+            textOps.push('0.10 0.65 0.45 rg'); // Emerald
+            textOps.push('BT /F1 9 Tf 440 745 Td ([ ' + docConfig.statusBadge.replace(/[\(\)\\\r\n]/g, ' ') + ' ]) Tj ET');
+          }
+
+          // Top divider
+          textOps.push('0.75 0.82 0.85 RG 1 w 45 715 m 565 715 l S');
+
+          let y = 695;
+
+          // Metadata Grid (2 Columns)
+          if (docConfig.metadata && docConfig.metadata.length > 0) {
+            textOps.push('0.15 0.22 0.28 rg');
+            for (let i = 0; i < docConfig.metadata.length; i += 2) {
+              const item1 = docConfig.metadata[i];
+              const item2 = docConfig.metadata[i + 1];
+
+              if (item1) {
+                textOps.push('BT /F1 9 Tf 45 ' + y + ' Td (' + item1.label.replace(/[\(\)\\\r\n]/g, ' ') + ':) Tj ET');
+                textOps.push('BT /F2 9 Tf 150 ' + y + ' Td (' + String(item1.value || 'N/A').replace(/[\(\)\\\r\n]/g, ' ') + ') Tj ET');
+              }
+              if (item2) {
+                textOps.push('BT /F1 9 Tf 320 ' + y + ' Td (' + item2.label.replace(/[\(\)\\\r\n]/g, ' ') + ':) Tj ET');
+                textOps.push('BT /F2 9 Tf 420 ' + y + ' Td (' + String(item2.value || 'N/A').replace(/[\(\)\\\r\n]/g, ' ') + ') Tj ET');
+              }
+              y -= 16;
+            }
+            y -= 6;
+            // Divider
+            textOps.push('0.85 0.88 0.90 RG 0.5 w 45 ' + y + ' m 565 ' + y + ' l S');
+            y -= 16;
+          }
+
+          // Sections with titles and bullet points / paragraphs
+          if (docConfig.sections && docConfig.sections.length > 0) {
+            for (const sec of docConfig.sections) {
+              if (y < 120) break; // page boundary protection
+              textOps.push('0.04 0.20 0.26 rg');
+              textOps.push('BT /F1 10.5 Tf 45 ' + y + ' Td (' + sec.title.replace(/[\(\)\\\r\n]/g, ' ') + ') Tj ET');
+              y -= 14;
+
+              textOps.push('0.20 0.25 0.30 rg');
+              for (const line of sec.lines) {
+                if (y < 90) break;
+                textOps.push('BT /F2 8.5 Tf 50 ' + y + ' Td (' + line.replace(/[\(\)\\\r\n]/g, ' ') + ') Tj ET');
+                y -= 13;
+              }
+              y -= 8;
+            }
+          }
+
+          // Cryptographic Security Seal & Watermark Box at bottom
+          textOps.push('0.92 0.96 0.97 rg 45 48 520 28 re f');
+          textOps.push('0.70 0.80 0.84 RG 0.5 w 45 48 520 28 re S');
+          textOps.push('0.10 0.40 0.45 rg');
+          textOps.push('BT /F1 7.5 Tf 55 64 Td (CertiBid AI Digital Trust Protocol: SHA-256 Verified Immutable Record) Tj ET');
+          textOps.push('0.35 0.45 0.50 rg');
+          const sealDate = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+          textOps.push('BT /F2 7 Tf 55 54 Td (Audit Ledger Stamp: ' + (docConfig.docNumber || 'DOC-GEN') + ' | ' + sealDate + ' | Department of Public Procurement) Tj ET');
+
+          // Footer
+          textOps.push('0.5 0.55 0.60 rg');
+          textOps.push('BT /F2 7.5 Tf 45 32 Td (' + (docConfig.footer || 'This document is generated by CertiBid AI and holds legal evidentiary validity under the Public Procurement Act.').replace(/[\(\)\\\r\n]/g, ' ') + ') Tj ET');
+
+          const streamContent = textOps.join('\n');
+          const streamLen = Buffer.byteLength(streamContent, 'utf-8');
+
+          let out = '%PDF-1.4\n';
+          const offsets: number[] = [];
+
+          function addObj(content: string) {
+            offsets.push(Buffer.byteLength(out, 'utf-8'));
+            out += offsets.length + ' 0 obj\n' + content + '\nendobj\n';
+          }
+
+          addObj('<< /Type /Catalog /Pages 2 0 R >>');
+          addObj('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+          addObj('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>');
+          addObj('<< /Length ' + streamLen + ' >>\nstream\n' + streamContent + '\nendstream');
+          addObj('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
+          addObj('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+
+          const startxref = Buffer.byteLength(out, 'utf-8');
+          out += 'xref\n0 ' + (offsets.length + 1) + '\n0000000000 65535 f \n';
+          for (const off of offsets) {
+            out += String(off).padStart(10, '0') + ' 00000 n \n';
+          }
+          out += 'trailer\n<< /Size ' + (offsets.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + startxref + '\n%%EOF';
+          return Buffer.from(out, 'utf-8');
+        }
+
+        // --- DOCUMENTS & FILES API WITH PERSISTENT FILE STORAGE & STRICT AUTHORIZATION ---
+        const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'certificates');
+        if (!fs.existsSync(UPLOADS_DIR)) {
+          try { fs.mkdirSync(UPLOADS_DIR, { recursive: true }); } catch (e) {}
+        }
+
+        // UNIVERSAL FILE DOWNLOAD ROUTE: /api/files/:id/download or /api/v1/files/:id/download
+        if (req.method === 'GET' && (
+          url.startsWith('/api/files/') || 
+          url.startsWith('/api/v1/files/') ||
+          url.startsWith('/api/v1/documents/file/') ||
+          url.startsWith('/api/documents/file/')
+        )) {
+          const user = getAuthenticatedUser(req, db);
+          const cleanUrl = url.split('?')[0];
+
+          // 1. Specialized Tender Document Download: /api/files/tender/:tenderId/download
+          if (cleanUrl.includes('/files/tender/') || (cleanUrl.split('/').pop()?.startsWith('TND-') && cleanUrl.includes('/tender/'))) {
+            const tenderId = cleanUrl.replace('/download', '').split('/').pop() || '';
+            const tender = db.tenders.find((t: any) => t.id === tenderId);
+            if (!tender) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Not Found', message: 'Tender specification not found' }));
+              return;
+            }
+
+            const pdfBuf = generateStandardPdf({
+              title: 'Government of India - Notice Inviting Tender (NIT)',
+              subtitle: `Tender Ref: ${tender.id} | Department: ${tender.department}`,
+              docNumber: tender.id,
+              statusBadge: tender.status?.toUpperCase() || 'PUBLISHED',
+              metadata: [
+                { label: 'Tender Title', value: tender.title },
+                { label: 'Issuing Department', value: tender.department },
+                { label: 'Category', value: tender.category },
+                { label: 'Approved Budget Ceiling', value: `INR ${(tender.budget || 0).toLocaleString('en-IN')}` },
+                { label: 'Mandatory EMD (2%)', value: `INR ${(tender.emdAmount || Math.round((tender.budget || 50000000) * 0.02)).toLocaleString('en-IN')}` },
+                { label: 'Location of Works', value: tender.location || 'Central Capital Region' },
+                { label: 'Publishing Date', value: tender.publishingDate || '2026-07-15' },
+                { label: 'Submission Deadline', value: tender.submissionDeadline || '2026-08-25' }
+              ],
+              sections: [
+                {
+                  title: '1. Project Scope & Detailed Deliverables',
+                  lines: [
+                    tender.description || 'Comprehensive turnkey project execution including supply, installation, testing, and 3-year warranty maintenance.',
+                    'Deliverables include hardware provisioning, software deployment, system integration, and operator training.'
+                  ]
+                },
+                {
+                  title: '2. Prequalification & Statutory Compliance Requirements',
+                  lines: Array.isArray(tender.requirements) && tender.requirements.length > 0
+                    ? tender.requirements.map((r: string) => `• ${r}`)
+                    : [
+                        '• ISO 27001 / ISO 9001 quality and cybersecurity certifications mandatory.',
+                        '• Valid GSTIN and Tax Clearance Certificate for current financial year.',
+                        '• Prequalification financial turnover certificate audited by Chartered Accountant.'
+                      ]
+                },
+                {
+                  title: '3. Bid Evaluation & AI Anti-Collusion Scrutiny',
+                  lines: [
+                    '• Bids shall be evaluated through CertiBid AI two-envelope electronic bidding system.',
+                    '• Neural collusion detection and anomalous pricing models are active during opening phase.'
+                  ]
+                }
+              ],
+              footer: 'Official Tender Notice published under Public Procurement Transparency Rules 2026.'
+            });
+
+            const safeFilename = `tender_${tender.id}_specifications.pdf`;
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Length', pdfBuf.length);
+            res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
+            res.end(pdfBuf);
+            return;
+          }
+
+          // 2. Specialized Bid Proposal Download: /api/files/bid/:bidId/download
+          if (cleanUrl.includes('/files/bid/') || (cleanUrl.split('/').pop()?.startsWith('BID-') && cleanUrl.includes('/bid/'))) {
+            const bidId = cleanUrl.replace('/download', '').split('/').pop() || '';
+            const bid = db.bids.find((b: any) => b.id === bidId);
+            if (!bid) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Not Found', message: 'Bid proposal not found' }));
+              return;
+            }
+
+            // Authorization: Bidder can only download their own bid; Officer/Admin/Auditor can download all
+            if (user && (user.role === 'BIDDER' || user.role === 'VENDOR')) {
+              const isOwner = (user.bidderId && bid.vendorId === user.bidderId) ||
+                              (bid.vendorEmail && bid.vendorEmail.toLowerCase() === (user.email || '').toLowerCase());
+              if (!isOwner) {
+                res.statusCode = 403;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Forbidden', message: 'Access denied: You cannot download proposal submitted by another bidder.' }));
+                return;
+              }
+            }
+
+            const pdfBuf = generateStandardPdf({
+              title: 'Official Sealed Commercial & Technical Bid Proposal',
+              subtitle: `Bid Reference: ${bid.id} | Tender: ${bid.tenderId}`,
+              docNumber: bid.id,
+              statusBadge: bid.status?.toUpperCase() || 'SUBMITTED',
+              metadata: [
+                { label: 'Bid Proposal ID', value: bid.id },
+                { label: 'Tender Reference', value: bid.tenderId },
+                { label: 'Tender Title', value: bid.tenderTitle || 'National Infrastructure Upgrade' },
+                { label: 'Bidder Enterprise', value: bid.vendorName || bid.bidderName || 'Registered Enterprise' },
+                { label: 'Quoted Commercial Price', value: `INR ${(bid.proposedAmount || 0).toLocaleString('en-IN')}` },
+                { label: 'Completion Timeline', value: bid.estimatedCompletionTime || '12 Months' },
+                { label: 'EMD Guarantee Status', value: bid.emdPaymentStatus || 'Verified & Paid' },
+                { label: 'Submission Timestamp', value: bid.submittedAt || bid.submissionDate || '2026-08-02' }
+              ],
+              sections: [
+                {
+                  title: '1. Commercial Quotation Breakdown',
+                  lines: [
+                    `• Total All-Inclusive Fixed Contract Price: INR ${(bid.proposedAmount || 0).toLocaleString('en-IN')}`,
+                    '• Includes all statutory taxes, customs, transit insurance, and commissioning costs.',
+                    `• Earnest Money Deposit (EMD) Reference: ${bid.emdTransactionId || 'TXN-EMD-882910'} (Verified)`
+                  ]
+                },
+                {
+                  title: '2. Technical & Governance Attestation',
+                  lines: [
+                    '• The bidder hereby certifies full compliance with all technical requirements specified in NIT.',
+                    '• All uploaded corporate certificates, ISO audit reports, and balance sheets are genuine and current.',
+                    `• AI Neural Integrity Confidence Score: ${bid.bidScore || 94}% (Low Risk Classification)`
+                  ]
+                }
+              ],
+              footer: 'Cryptographically sealed electronic bid submission record on CertiBid AI.'
+            });
+
+            const safeFilename = `bid_${bid.id}_proposal.pdf`;
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Length', pdfBuf.length);
+            res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
+            res.end(pdfBuf);
+            return;
+          }
+
+          // 3. Specialized Award Certificate Download: /api/files/award/:tenderId/download
+          if (cleanUrl.includes('/files/award/')) {
+            const tenderId = cleanUrl.replace('/download', '').split('/').pop() || '';
+            const tender = db.tenders.find((t: any) => t.id === tenderId);
+            if (!tender) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Not Found', message: 'Tender record not found' }));
+              return;
+            }
+
+            const winningBid = db.bids.find((b: any) => b.id === tender.awardedBidId || (b.tenderId === tender.id && b.status === 'Awarded'));
+            const vendorName = tender.awardedVendorName || winningBid?.vendorName || 'Acme Construction Services';
+            const awardAmount = tender.awardedAmount || winningBid?.proposedAmount || tender.budget || 41200000;
+            const awardDate = tender.awardedAt || new Date().toISOString().split('T')[0];
+
+            const pdfBuf = generateStandardPdf({
+              title: 'Statutory Government Contract Award & Sanction Order',
+              subtitle: `Tender Ref: ${tender.id} | Department: ${tender.department}`,
+              docNumber: `AWD-${tender.id}`,
+              statusBadge: 'CONTRACT AWARDED & SANCTIONED',
+              metadata: [
+                { label: 'Tender ID', value: tender.id },
+                { label: 'Project Name', value: tender.title },
+                { label: 'Awarded Enterprise (L1)', value: vendorName },
+                { label: 'Vendor Registration ID', value: tender.awardedVendorId || winningBid?.vendorId || 'VND-10029' },
+                { label: 'Sanctioned Contract Value', value: `INR ${awardAmount.toLocaleString('en-IN')}` },
+                { label: 'Issuing Department', value: tender.department },
+                { label: 'Date of Sanction Order', value: awardDate.slice(0, 10) },
+                { label: 'Winning Bid Reference', value: tender.awardedBidId || winningBid?.id || 'BID-9011' }
+              ],
+              sections: [
+                {
+                  title: '1. Committee Evaluation & Final Award Summary',
+                  lines: [
+                    '• The Evaluation Committee has concluded comprehensive technical, financial, and AI risk scrutiny.',
+                    `• ${vendorName} emerged as the lowest compliant bidder (L1) with an AI Risk Confidence Score of 94%.`,
+                    tender.awardNotes ? `• Committee Decision Notes: ${tender.awardNotes}` : '• Committee confirmed L1 compliance and approved final contract award.'
+                  ]
+                },
+                {
+                  title: '2. Contract Execution & Statutory Conditions',
+                  lines: [
+                    '• The awarded contractor is instructed to furnish the 5% Performance Bank Guarantee within 14 working days.',
+                    '• Work Commencement Order shall be issued upon mutual signing of contract agreement.',
+                    '• EMD of non-winning bidders has been authorized for automated treasury refund.'
+                  ]
+                }
+              ],
+              footer: 'Official Sanction Order generated by CertiBid AI Statutory Governance Registry.'
+            });
+
+            const safeFilename = `award_certificate_${tender.id}.pdf`;
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Length', pdfBuf.length);
+            res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
+            res.end(pdfBuf);
+            return;
+          }
+
+          // 4. Specialized Receipt Download: /api/files/receipt/:txnId/download
+          if (cleanUrl.includes('/files/receipt/') || (cleanUrl.split('/').pop()?.startsWith('TXN-') && cleanUrl.includes('/receipt/'))) {
+            const txnId = cleanUrl.replace('/download', '').split('/').pop() || '';
+            const txn = db.transactions.find((t: any) => t.id === txnId) || {
+              id: txnId,
+              tenderId: 'TND-2026-8901',
+              vendorName: user?.organization || user?.companyName || 'Acme Construction Services',
+              amount: 900000,
+              type: 'EMD Deposit',
+              status: 'Completed',
+              date: '2026-08-02',
+              escrowAccount: 'ESCROW-SBIN-IN-8891'
+            };
+
+            const pdfBuf = generateStandardPdf({
+              title: 'CertiBid AI Treasury & Escrow Guarantee Registry',
+              subtitle: 'Official Earnest Money Deposit (EMD) Receipt & Proof of Payment',
+              docNumber: txn.id,
+              statusBadge: 'PAYMENT VERIFIED & CLEARED',
+              metadata: [
+                { label: 'Receipt / Transaction ID', value: txn.id },
+                { label: 'Tender Reference', value: txn.tenderId || 'TND-2026-8901' },
+                { label: 'Depositing Enterprise', value: txn.vendorName || 'Authenticated Bidder' },
+                { label: 'Amount Paid (INR)', value: `INR ${(txn.amount || 900000).toLocaleString('en-IN')}` },
+                { label: 'Transaction Type', value: txn.type || 'EMD Escrow Deposit' },
+                { label: 'Payment Status', value: txn.status || 'Completed / Escrow Held' },
+                { label: 'Escrow Custody Account', value: txn.escrowAccount || 'ESCROW-SBIN-IN-8891' },
+                { label: 'Timestamp', value: txn.date || new Date().toISOString().split('T')[0] }
+              ],
+              sections: [
+                {
+                  title: '1. Treasury Escrow Deposit Details',
+                  lines: [
+                    `• Payment of INR ${(txn.amount || 900000).toLocaleString('en-IN')} has been securely credited to the Government Escrow Account.`,
+                    '• Funds are held in sovereign custody under the Public Procurement Guarantee Rules.',
+                    '• Automated refund will be processed to source account upon tender completion or disqualification.'
+                  ]
+                }
+              ],
+              footer: 'Official Electronic Treasury Receipt - CertiBid AI Escrow Ledger System.'
+            });
+
+            const safeFilename = `receipt_${txn.id}.pdf`;
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Length', pdfBuf.length);
+            res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
+            res.end(pdfBuf);
+            return;
+          }
+
+          // 5. Specialized Reports Download: /api/files/reports/:reportType/download
+          if (cleanUrl.includes('/files/reports/')) {
+            const reportType = cleanUrl.replace('/download', '').split('/').pop() || 'full';
+            const isPdf = url.includes('format=pdf');
+
+            if (isPdf) {
+              const pdfBuf = generateStandardPdf({
+                title: 'CertiBid AI - Executive Procurement Audit & Integrity Report',
+                subtitle: `Report Scope: ${reportType.toUpperCase()} | Generated: ${new Date().toISOString().split('T')[0]}`,
+                docNumber: `RPT-2026-${reportType.toUpperCase()}`,
+                statusBadge: 'STATUTORY AUDIT CERTIFIED',
+                metadata: [
+                  { label: 'Audit Scope', value: 'National Public Procurement Ledger' },
+                  { label: 'Total Tenders Tracked', value: String(db.tenders?.length || 8) },
+                  { label: 'Total Bids Evaluated', value: String(db.bids?.length || 15) },
+                  { label: 'Registered Enterprises', value: String(db.vendors?.length || 12) },
+                  { label: 'Overall Collusion Index', value: '1.8% (Negligible)' },
+                  { label: 'Total Treasury Volume', value: 'INR 45,80,00,000' }
+                ],
+                sections: [
+                  {
+                    title: '1. Executive Summary & Integrity Highlights',
+                    lines: [
+                      '• 100% of awarded tenders adhered strictly to L1 lowest-cost compliant bidding rules.',
+                      '• Zero unauthorized document tampering detected across active evaluation pipelines.',
+                      '• AI Neural Scan verified all statutory ISO certifications, KYC, and tax clearance certificates.'
+                    ]
+                  },
+                  {
+                    title: '2. Risk & Anomaly Scrutiny Breakdown',
+                    lines: [
+                      '• High-Risk Proposals Flagged: 0 (All resolved via officer escalation protocols).',
+                      '• Moderate Risk / Document Resubmissions: 2 (Properly remediated).',
+                      '• Automated Treasury EMD settlements completed with 100% reconciliation accuracy.'
+                    ]
+                  }
+                ],
+                footer: 'CertiBid AI Governance & Audit Ledger - Statutory Executive Export.'
+              });
+
+              const safeFilename = `CertiBid_Executive_Procurement_Audit_Report.pdf`;
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/pdf');
+              res.setHeader('Content-Length', pdfBuf.length);
+              res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
+              res.end(pdfBuf);
+              return;
+            } else {
+              // CSV Export
+              let csvContent = '';
+              let safeFilename = 'CertiBid_Report.csv';
+
+              if (reportType === 'annual' || reportType === 'full') {
+                safeFilename = reportType === 'annual' ? 'Annual_Procurement_Audit_Summary_2024.csv' : 'CertiBid_Full_Procurement_Audit_Report.csv';
+                csvContent = 'Tender ID,Tender Title,Department,Category,Budget (INR),Status,Awarded Vendor,Awarded Amount (INR),Publish Date,Opening Date\n';
+                db.tenders.forEach((t: any) => {
+                  csvContent += `"${t.id}","${(t.title || '').replace(/"/g, '""')}","${t.department || ''}","${t.category || ''}",${t.budget || 0},"${t.status || ''}","${t.awardedVendorName || 'N/A'}",${t.awardedAmount || 0},"${t.publishingDate || ''}","${t.openingDate || ''}"\n`;
+                });
+              } else if (reportType === 'risk') {
+                safeFilename = 'Vendor_Risk_Collusion_Log.csv';
+                csvContent = 'Vendor ID,Company Name,Category,Risk Score,Risk Level,Verification Status,Financial Health,Registration No\n';
+                db.vendors.forEach((v: any) => {
+                  csvContent += `"${v.id}","${(v.companyName || '').replace(/"/g, '""')}","${v.category || ''}",${v.riskScore || 0},"${v.riskLevel || 'Low'}","${v.verificationStatus || 'Verified'}","${v.financialHealth || 'A+'}","${v.registrationNumber || ''}"\n`;
+                });
+              } else if (reportType === 'emd') {
+                safeFilename = 'Treasury_EMD_Ledger_Export.csv';
+                csvContent = 'Transaction ID,Tender ID,Vendor / Entity,Amount (INR),Type,Status,Escrow Account,Date\n';
+                db.transactions.forEach((tx: any) => {
+                  csvContent += `"${tx.id}","${tx.tenderId || ''}","${(tx.vendorName || '').replace(/"/g, '""')}",${tx.amount || 0},"${tx.type || 'EMD'}","${tx.status || 'Completed'}","${tx.escrowAccount || ''}","${tx.date || ''}"\n`;
+                });
+              }
+
+              const csvBuf = Buffer.from(csvContent, 'utf-8');
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+              res.setHeader('Content-Length', csvBuf.length);
+              res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
+              res.end(csvBuf);
+              return;
+            }
+          }
+
+          // 6. Generic File / Certificate Download by ID: /api/files/:id/download or /api/v1/documents/file/:id
+          const docId = cleanUrl.replace('/download', '').split('/').pop() || '';
+          const doc = db.documents.find((d: any) => d.id === docId);
+
+          if (!doc) {
+            // Check if it's a tender, bid, or txn ID passed directly
+            if (docId.startsWith('TND-')) {
+              res.writeHead(302, { Location: `/api/files/tender/${docId}/download` });
+              res.end();
+              return;
+            }
+            if (docId.startsWith('BID-')) {
+              res.writeHead(302, { Location: `/api/files/bid/${docId}/download` });
+              res.end();
+              return;
+            }
+            if (docId.startsWith('TXN-')) {
+              res.writeHead(302, { Location: `/api/files/receipt/${docId}/download` });
+              res.end();
+              return;
+            }
+
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'File Not Found', message: `No document matching ID ${docId} was found.` }));
+            return;
+          }
+
+          // Strict Authorization Check: If Bidder, only allow downloading documents belonging to that bidder
+          if (user && (user.role === 'BIDDER' || user.role === 'VENDOR')) {
+            const userBidderId = user.bidderId || user.vendorId;
+            const userEmail = (user.email || '').toLowerCase().trim();
+            const userOrg = (user.organization || user.companyName || '').toLowerCase().trim();
+
+            const isOwner = (userBidderId && doc.vendorId === userBidderId) ||
+                            (doc.uploadedByEmail && doc.uploadedByEmail.toLowerCase().trim() === userEmail) ||
+                            (userOrg && doc.vendorName && doc.vendorName.toLowerCase().trim() === userOrg);
+
+            if (!isOwner) {
+              res.statusCode = 403;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Forbidden', message: 'Access denied: You do not have permission to download documents belonging to another bidder.' }));
+              return;
+            }
+          }
+
+          const isDownload = url.includes('download=true') || url.includes('download=1') || cleanUrl.includes('/download') || cleanUrl.startsWith('/api/files/');
+          const ext = (doc.fileName || '').toLowerCase().split('.').pop() || 'pdf';
+          let contentType = 'application/pdf';
+          if (ext === 'png') contentType = 'image/png';
+          else if (ext === 'jpg' || ext === 'jpeg') contentType = 'image/jpeg';
+          else if (ext === 'doc' || ext === 'docx') contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          else if (ext === 'xls' || ext === 'xlsx') contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          else if (ext === 'csv') contentType = 'text/csv';
+          else if (ext === 'txt') contentType = 'text/plain';
+
+          const disposition = isDownload ? 'attachment' : 'inline';
+          const safeName = doc.fileName || `${doc.id}.pdf`;
+
+          // Check if physical file exists in uploads storage
+          const relativeStoragePath = doc.storagePath || doc.path || path.join('uploads', 'certificates', `${doc.id}_${safeName}`);
+          const absoluteStoragePath = path.join(process.cwd(), relativeStoragePath);
+
+          if (fs.existsSync(absoluteStoragePath)) {
+            try {
+              const fileBuf = fs.readFileSync(absoluteStoragePath);
+              res.statusCode = 200;
+              res.setHeader('Content-Type', contentType);
+              res.setHeader('Content-Length', fileBuf.length);
+              res.setHeader('Content-Disposition', `${disposition}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+              res.end(fileBuf);
+              return;
+            } catch (err) {
+              console.error('Error reading physical certificate file:', err);
+            }
+          }
+
+          // Fallback dynamic high-quality PDF generator for seed or simulated documents
+          const pdfTitle = doc.title || 'Official Statutory Compliance Certificate';
+          const pdfVendor = doc.vendorName || 'Authenticated Enterprise';
+          const pdfDocId = doc.id || 'DOC-000';
+          const pdfType = doc.documentType || 'Corporate KYC & Statutory Compliance';
+          const pdfDate = doc.uploadedAt || new Date().toISOString().split('T')[0];
+
+          const generatedPdfBuf = generateStandardPdf({
+            title: 'CertiBid AI - Official Statutory Compliance Certificate',
+            subtitle: `Document Ref: ${pdfDocId} | Type: ${pdfType}`,
+            docNumber: pdfDocId,
+            statusBadge: doc.status?.toUpperCase() || 'VERIFIED & REGISTERED',
+            metadata: [
+              { label: 'Document Title', value: pdfTitle },
+              { label: 'Registered Enterprise', value: pdfVendor },
+              { label: 'Document Reference', value: pdfDocId },
+              { label: 'Compliance Category', value: pdfType },
+              { label: 'AI Scan Confidence', value: `${doc.aiConfidence || 98}% Verified Match` },
+              { label: 'Issuing Authority', value: doc.verifiedBy || 'CertiBid AI Verification Engine' },
+              { label: 'Date of Registration', value: pdfDate },
+              { label: 'File Specification', value: `${doc.fileName || 'certificate.pdf'} (${doc.fileSize || '1.2 MB'})` }
+            ],
+            sections: [
+              {
+                title: '1. Statutory Verification Attestation',
+                lines: [
+                  '• This corporate compliance document has been verified against statutory enterprise registration registries.',
+                  '• AI Optical Character Recognition (OCR) and tamper-detection analysis confirmed zero document alterations.',
+                  '• Validated for tender eligibility under the Central Public Procurement Portal standards.'
+                ]
+              }
+            ],
+            footer: 'CertiBid AI Automated Governance & Document Scrutiny Engine.'
+          });
+
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Length', generatedPdfBuf.length);
+          res.setHeader('Content-Disposition', `${disposition}; filename="${safeName.endsWith('.pdf') ? safeName : safeName + '.pdf'}"; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+          res.end(generatedPdfBuf);
+          return;
+        }
+
         if (url.startsWith('/api/v1/documents') || url.startsWith('/api/documents')) {
           res.setHeader('Content-Type', 'application/json');
           const user = getAuthenticatedUser(req, db);
+
+          // GET /api/v1/documents/:id (Single Document)
+          const docIdMatch = url.match(/^\/api(?:\/v1)?\/documents\/([^/?]+)$/);
+          if (req.method === 'GET' && docIdMatch && !url.includes('/status') && !url.includes('/upload')) {
+            const singleDocId = docIdMatch[1];
+            const foundDoc = db.documents.find((d: any) => d.id === singleDocId);
+            if (!foundDoc) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ error: 'Not Found', message: 'Document not found' }));
+              return;
+            }
+
+            if (user && (user.role === 'BIDDER' || user.role === 'VENDOR')) {
+              const userBidderId = user.bidderId || user.vendorId;
+              const userEmail = (user.email || '').toLowerCase().trim();
+              const isOwner = (userBidderId && foundDoc.vendorId === userBidderId) ||
+                              (foundDoc.uploadedByEmail && foundDoc.uploadedByEmail.toLowerCase().trim() === userEmail);
+              if (!isOwner) {
+                res.statusCode = 403;
+                res.end(JSON.stringify({ error: 'Forbidden', message: 'Access denied: You cannot view documents belonging to another bidder.' }));
+                return;
+              }
+            }
+
+            res.statusCode = 200;
+            res.end(JSON.stringify(foundDoc));
+            return;
+          }
 
           // GET /api/v1/documents (List)
           if (req.method === 'GET' && (url === '/api/v1/documents' || url.startsWith('/api/v1/documents?') || url === '/api/documents' || url.startsWith('/api/documents?'))) {
             let result = [...db.documents];
 
             if (user && (user.role === 'BIDDER' || user.role === 'VENDOR')) {
-              const userBidderId = user.bidderId;
-              const userEmail = (user.email || '').toLowerCase();
-              const userOrg = (user.organization || user.companyName || '').toLowerCase();
+              const userBidderId = user.bidderId || user.vendorId;
+              const userEmail = (user.email || '').toLowerCase().trim();
+              const userOrg = (user.organization || user.companyName || '').toLowerCase().trim();
 
               result = result.filter((d: any) => 
                 (userBidderId && d.vendorId === userBidderId) ||
-                (d.uploadedByEmail && d.uploadedByEmail.toLowerCase() === userEmail) ||
-                (userOrg && d.vendorName && d.vendorName.toLowerCase() === userOrg)
+                (d.uploadedByEmail && d.uploadedByEmail.toLowerCase().trim() === userEmail) ||
+                (userOrg && d.vendorName && d.vendorName.toLowerCase().trim() === userOrg)
               );
             } else if (!user) {
               result = [];
@@ -1908,7 +2560,7 @@ const apiMockPlugin = () => {
           }
 
           // POST /api/v1/documents/upload or POST /api/v1/documents
-          if (req.method === 'POST') {
+          if (req.method === 'POST' && !url.includes('/status') && !url.includes('/review')) {
             let body = '';
             req.on('data', (chunk: any) => { body += chunk; });
             req.on('end', () => {
@@ -1922,27 +2574,116 @@ const apiMockPlugin = () => {
               }
 
               const newDocId = 'DOC-' + Math.floor(1000 + Math.random() * 9000);
-              const title = parsed.title || parsed.name || 'Uploaded Company Document';
+              const title = parsed.title || parsed.name || (parsed.fileName ? parsed.fileName.replace(/\.[^/.]+$/, "") : 'Company Registration Certificate');
               const docType = parsed.documentType || parsed.type || 'Compliance Certificate';
+              const rawFileName = parsed.fileName || `${title.replace(/\s+/g, '_')}.pdf`;
+              const safeFileName = `${newDocId}_${rawFileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+              const relativeStoragePath = path.join('uploads', 'certificates', safeFileName);
+              const absoluteStoragePath = path.join(process.cwd(), relativeStoragePath);
+
+              let calculatedSize = parsed.fileSize || '1.2 MB';
+              let byteSize = 1258291;
+
+              // Write persistent binary file to disk if base64 data provided
+              if (parsed.fileData) {
+                try {
+                  const base64Clean = parsed.fileData.includes(',') ? parsed.fileData.split(',')[1] : parsed.fileData;
+                  const fileBuffer = Buffer.from(base64Clean, 'base64');
+                  fs.writeFileSync(absoluteStoragePath, fileBuffer);
+                  byteSize = fileBuffer.length;
+                  calculatedSize = byteSize > 1048576 
+                    ? `${(byteSize / 1048576).toFixed(1)} MB` 
+                    : `${Math.round(byteSize / 1024)} KB`;
+                } catch (writeErr) {
+                  console.error('Failed to write uploaded file to persistent storage:', writeErr);
+                  res.statusCode = 500;
+                  res.end(JSON.stringify({ error: 'Storage Error', message: 'Failed to write certificate file to persistent disk' }));
+                  return;
+                }
+              }
+
+              const ext = rawFileName.toLowerCase().split('.').pop() || 'pdf';
+              const fileTypeUpper = ext === 'png' ? 'PNG' : (ext === 'jpg' || ext === 'jpeg') ? 'JPG' : (ext === 'doc' || ext === 'docx') ? 'DOC' : (ext === 'xls' || ext === 'xlsx' || ext === 'csv') ? 'SHEET' : 'PDF';
+              const mimeType = ext === 'png' ? 'image/png' : (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : ext === 'csv' ? 'text/csv' : 'application/pdf';
+
+              const bidderVendorId = user.bidderId || user.vendorId || parsed.vendorId || 'VND-10029';
+              const bidderVendorName = user.organization || user.companyName || user.name || parsed.vendorName || 'Bidder Entity';
 
               const newDoc = {
                 id: newDocId,
                 title: title,
+                originalName: rawFileName,
+                storedName: safeFileName,
+                fileName: rawFileName,
                 documentType: docType,
-                vendorId: user.bidderId,
-                vendorName: user.organization || user.companyName || user.name,
-                uploadedByEmail: user.email,
-                fileName: parsed.fileName || `${title.replace(/\s+/g, '_')}.pdf`,
-                fileUrl: '#',
-                status: 'Under Review',
-                uploadedAt: new Date().toISOString().split('T')[0],
-                aiConfidence: 94,
-                verifiedBy: 'AI System Verification',
+                vendorId: bidderVendorId,
+                vendorName: bidderVendorName,
+                companyId: bidderVendorId,
+                companyName: bidderVendorName,
+                uploadedBy: user.id || user.email || user.name,
+                uploadedByName: user.name || 'Authorized Bidder',
+                uploadedByEmail: user.email || '',
+                mimeType: mimeType,
+                fileType: fileTypeUpper,
+                fileSize: calculatedSize,
+                size: byteSize,
+                path: relativeStoragePath,
+                storagePath: relativeStoragePath,
+                fileUrl: `/api/files/${newDocId}/download`,
+                entityType: 'certificate',
+                entityId: newDocId,
+                status: 'PENDING_REVIEW',
+                uploadedAt: new Date().toISOString(),
+                aiConfidence: 96,
+                verifiedBy: '',
+                reviewedBy: '',
+                reviewedByRole: '',
+                reviewedAt: '',
                 resubmissionReason: ''
               };
 
-              db.documents.unshift(newDoc);
-              saveDb(db);
+              try {
+                db.documents.unshift(newDoc);
+
+                // Add notification to Officers & Admins about new uploaded document
+                if (!db.notifications) db.notifications = [];
+                db.notifications.unshift({
+                  id: 'NTF-' + Math.floor(1000 + Math.random() * 9000),
+                  userId: 'ALL_OFFICERS',
+                  recipientEmail: 'officer@certibid.com',
+                  role: 'OFFICER',
+                  title: 'New Document Uploaded for Review',
+                  message: `Bidder ${bidderVendorName} uploaded "${newDoc.fileName}" (${docType}) awaiting verification audit.`,
+                  type: 'Document',
+                  read: false,
+                  timestamp: new Date().toISOString(),
+                  time: 'Just now'
+                });
+
+                // Add Audit Log entry
+                if (!db.auditLogs) db.auditLogs = [];
+                db.auditLogs.unshift({
+                  id: 'LOG-' + Math.floor(10000 + Math.random() * 90000),
+                  action: 'DOCUMENT_UPLOADED',
+                  category: 'Document',
+                  entityId: newDocId,
+                  performedBy: `${user.name} (BIDDER)`,
+                  userRole: 'BIDDER',
+                  timestamp: new Date().toISOString(),
+                  details: `Bidder ${bidderVendorName} uploaded ${rawFileName} (${docType}). Status: PENDING_REVIEW.`
+                });
+
+                saveDb(db);
+              } catch (dbErr) {
+                console.error('Failed to save document record in DB:', dbErr);
+                // Rollback written file if db save fails
+                if (fs.existsSync(absoluteStoragePath)) {
+                  try { fs.unlinkSync(absoluteStoragePath); } catch (e) {}
+                }
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: 'Database Error', message: 'Failed to save certificate metadata' }));
+                return;
+              }
 
               res.statusCode = 201;
               res.end(JSON.stringify(newDoc));
@@ -1963,11 +2704,11 @@ const apiMockPlugin = () => {
 
             const doc = db.documents[docIndex];
             if (user && (user.role === 'BIDDER' || user.role === 'VENDOR')) {
-              const userBidderId = user.bidderId;
-              const userEmail = (user.email || '').toLowerCase();
+              const userBidderId = user.bidderId || user.vendorId;
+              const userEmail = (user.email || '').toLowerCase().trim();
 
               const isOwner = (userBidderId && doc.vendorId === userBidderId) ||
-                              (doc.uploadedByEmail && doc.uploadedByEmail.toLowerCase() === userEmail);
+                              (doc.uploadedByEmail && doc.uploadedByEmail.toLowerCase().trim() === userEmail);
 
               if (!isOwner) {
                 res.statusCode = 403;
@@ -1976,11 +2717,20 @@ const apiMockPlugin = () => {
               }
             }
 
+            // Remove associated file from disk if present
+            const relPath = doc.storagePath || doc.path;
+            if (relPath) {
+              const absPath = path.join(process.cwd(), relPath);
+              if (fs.existsSync(absPath)) {
+                try { fs.unlinkSync(absPath); } catch (e) {}
+              }
+            }
+
             db.documents.splice(docIndex, 1);
             saveDb(db);
 
             res.statusCode = 200;
-            res.end(JSON.stringify({ success: true, message: 'Certificate deleted successfully' }));
+            res.end(JSON.stringify({ success: true, message: 'Certificate permanently deleted' }));
             return;
           }
         }
@@ -2615,10 +3365,23 @@ const apiMockPlugin = () => {
         // --- DOCUMENT STATUS UPDATE API ---
         if (
           (url.startsWith('/api/v1/documents') || url.startsWith('/api/documents')) &&
-          req.method === 'PUT' && url.includes('/status')
+          (req.method === 'PUT' || req.method === 'POST') && (url.includes('/status') || url.includes('/review'))
         ) {
           res.setHeader('Content-Type', 'application/json');
           const user = getAuthenticatedUser(req, db);
+
+          if (!user) {
+            res.statusCode = 401;
+            res.end(JSON.stringify({ error: 'Unauthorized', message: 'Authentication required' }));
+            return;
+          }
+
+          if (user.role !== 'ADMIN' && user.role !== 'OFFICER') {
+            res.statusCode = 403;
+            res.end(JSON.stringify({ error: 'Forbidden', message: 'Access denied: Only Procurement Officers and Administrators can audit and update document verification statuses.' }));
+            return;
+          }
+
           let body = '';
           req.on('data', (chunk: any) => { body += chunk; });
           req.on('end', () => {
@@ -2626,7 +3389,9 @@ const apiMockPlugin = () => {
             try { parsed = JSON.parse(body); } catch (e) {}
 
             const parts = url.split('?')[0].split('/');
-            const docId = parts[parts.indexOf('status') - 1];
+            // Handle both /api/v1/documents/:id/status and /api/documents/:id/status
+            const statusIdx = parts.indexOf('status') !== -1 ? parts.indexOf('status') : parts.indexOf('review');
+            const docId = parts[statusIdx - 1];
             const doc = db.documents.find((d: any) => d.id === docId);
 
             if (!doc) {
@@ -2635,15 +3400,232 @@ const apiMockPlugin = () => {
               return;
             }
 
-            if (parsed.status) doc.status = parsed.status;
-            if (parsed.resubmissionReason !== undefined) doc.resubmissionReason = parsed.resubmissionReason;
-            if (user) doc.verifiedBy = user.name;
+            const rawStatus = (parsed.status || 'APPROVED').toString().toUpperCase().trim();
+            const normalizedStatus = rawStatus.includes('REJECT') ? 'REJECTED' : rawStatus.includes('PENDING') ? 'PENDING_REVIEW' : 'APPROVED';
+            const reason = parsed.resubmissionReason || parsed.reason || '';
+
+            if (normalizedStatus === 'REJECTED' && !reason.trim()) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'Bad Request', message: 'A mandatory rejection and resubmission reason is required when rejecting a document.' }));
+              return;
+            }
+
+            doc.status = normalizedStatus;
+            doc.resubmissionReason = reason;
+            doc.verifiedBy = `${user.name} (${user.role})`;
+            doc.reviewedBy = user.name;
+            doc.reviewedByRole = user.role;
+            doc.reviewedAt = new Date().toISOString();
+
+            const isApproved = normalizedStatus === 'APPROVED';
+
+            // Dispatch notification to Bidder
+            if (!db.notifications) db.notifications = [];
+            db.notifications.unshift({
+              id: 'NTF-' + Math.floor(1000 + Math.random() * 9000),
+              userId: doc.vendorId || 'ALL',
+              recipientEmail: doc.uploadedByEmail || '',
+              role: 'BIDDER',
+              title: isApproved ? 'Document Audit: Verified & Approved' : 'Document Audit: Rejected / Action Required',
+              message: isApproved
+                ? `Your uploaded document "${doc.title || doc.fileName}" (${doc.documentType || 'Certificate'}) has been officially APPROVED by ${user.name} (${user.role}).`
+                : `Your uploaded document "${doc.title || doc.fileName}" (${doc.documentType || 'Certificate'}) was REJECTED by ${user.name} (${user.role}). Reason: ${reason}`,
+              type: isApproved ? 'Document' : 'Alert',
+              read: false,
+              timestamp: new Date().toISOString(),
+              time: 'Just now'
+            });
+
+            // Dispatch audit log
+            if (!db.auditLogs) db.auditLogs = [];
+            db.auditLogs.unshift({
+              id: 'LOG-' + Math.floor(10000 + Math.random() * 90000),
+              action: isApproved ? 'DOCUMENT_APPROVED' : 'DOCUMENT_REJECTED',
+              category: 'Document Audit',
+              entityId: doc.id,
+              performedBy: `${user.name} (${user.role})`,
+              userRole: user.role,
+              timestamp: new Date().toISOString(),
+              details: `${user.role} ${user.name} ${isApproved ? 'approved' : 'rejected'} document ${doc.id} (${doc.fileName}) for bidder ${doc.vendorName || doc.vendorId}.${reason ? ' Reason: ' + reason : ''}`
+            });
 
             saveDb(db);
             res.statusCode = 200;
-            res.end(JSON.stringify(doc));
+            res.end(JSON.stringify({ success: true, message: `Document successfully ${normalizedStatus.toLowerCase()}`, document: doc }));
           });
           return;
+        }
+
+        // --- SUPPORT & HELPDESK API ---
+        if (url.startsWith('/api/v1/support') || url.startsWith('/api/support')) {
+          res.setHeader('Content-Type', 'application/json');
+          if (!db.supportRequests) db.supportRequests = initialSupportSeed;
+          const user = getAuthenticatedUser(req, db);
+
+          // GET /api/v1/support
+          if (req.method === 'GET' && (url === '/api/v1/support' || url.startsWith('/api/v1/support?') || url === '/api/support' || url.startsWith('/api/support?'))) {
+            let result = [...db.supportRequests];
+
+            if (user && (user.role === 'BIDDER' || user.role === 'VENDOR')) {
+              const userBidderId = user.bidderId || user.vendorId;
+              const userEmail = (user.email || '').toLowerCase().trim();
+              const userOrg = (user.organization || user.companyName || '').toLowerCase().trim();
+
+              result = result.filter((s: any) =>
+                (userBidderId && s.vendorId === userBidderId) ||
+                (s.userEmail && s.userEmail.toLowerCase().trim() === userEmail) ||
+                (userOrg && s.vendorName && s.vendorName.toLowerCase().trim() === userOrg)
+              );
+            } else if (!user) {
+              result = [];
+            }
+
+            res.statusCode = 200;
+            res.end(JSON.stringify(result));
+            return;
+          }
+
+          // POST /api/v1/support (Create new Support Ticket)
+          if (req.method === 'POST' && (url === '/api/v1/support' || url === '/api/support')) {
+            let body = '';
+            req.on('data', (chunk: any) => { body += chunk; });
+            req.on('end', () => {
+              let parsed: any = {};
+              try { parsed = JSON.parse(body); } catch (e) {}
+
+              if (!user) {
+                res.statusCode = 401;
+                res.end(JSON.stringify({ error: 'Unauthorized', message: 'Authentication required' }));
+                return;
+              }
+
+              const newTicketId = 'SUP-' + Math.floor(1000 + Math.random() * 9000);
+              const vendorId = user.bidderId || user.vendorId || parsed.vendorId || 'VND-10029';
+              const vendorName = user.organization || user.companyName || user.name || parsed.vendorName || 'Bidder Entity';
+
+              const newTicket = {
+                id: newTicketId,
+                userId: user.id || vendorId,
+                userEmail: user.email || 'vendor@certibid.com',
+                userName: user.name || vendorName,
+                vendorId: vendorId,
+                vendorName: vendorName,
+                category: parsed.category || 'General Inquiry',
+                subject: parsed.subject || 'Helpdesk Inquiry',
+                priority: parsed.priority || 'Medium',
+                message: parsed.message || '',
+                status: 'OPEN',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                responses: []
+              };
+
+              db.supportRequests.unshift(newTicket);
+
+              // Notify Officers & Admins
+              if (!db.notifications) db.notifications = [];
+              db.notifications.unshift({
+                id: 'NTF-' + Math.floor(1000 + Math.random() * 9000),
+                userId: 'ALL_OFFICERS',
+                recipientEmail: 'officer@certibid.com',
+                role: 'OFFICER',
+                title: 'New Support Ticket Logged',
+                message: `Bidder ${vendorName} submitted ticket #${newTicketId}: "${newTicket.subject}" (${newTicket.category})`,
+                type: 'Alert',
+                read: false,
+                timestamp: new Date().toISOString(),
+                time: 'Just now'
+              });
+
+              // Audit Log
+              if (!db.auditLogs) db.auditLogs = [];
+              db.auditLogs.unshift({
+                id: 'LOG-' + Math.floor(10000 + Math.random() * 90000),
+                action: 'SUPPORT_TICKET_CREATED',
+                category: 'Support',
+                entityId: newTicketId,
+                performedBy: `${user.name} (${user.role})`,
+                userRole: user.role,
+                timestamp: new Date().toISOString(),
+                details: `Support ticket #${newTicketId} created by ${vendorName}: ${newTicket.subject}`
+              });
+
+              saveDb(db);
+              res.statusCode = 201;
+              res.end(JSON.stringify(newTicket));
+            });
+            return;
+          }
+
+          // PUT /api/v1/support/:id (Update status or post response)
+          const ticketIdMatch = url.match(/^\/api(?:\/v1)?\/support\/([^/?]+)/);
+          if ((req.method === 'PUT' || req.method === 'POST') && ticketIdMatch) {
+            const ticketId = ticketIdMatch[1];
+            let body = '';
+            req.on('data', (chunk: any) => { body += chunk; });
+            req.on('end', () => {
+              let parsed: any = {};
+              try { parsed = JSON.parse(body); } catch (e) {}
+
+              if (!user) {
+                res.statusCode = 401;
+                res.end(JSON.stringify({ error: 'Unauthorized', message: 'Authentication required' }));
+                return;
+              }
+
+              const ticket = db.supportRequests.find((s: any) => s.id === ticketId);
+              if (!ticket) {
+                res.statusCode = 404;
+                res.end(JSON.stringify({ error: 'Not Found', message: 'Support ticket not found' }));
+                return;
+              }
+
+              if (parsed.status) {
+                ticket.status = parsed.status;
+              }
+              if (parsed.priority) {
+                ticket.priority = parsed.priority;
+              }
+              ticket.updatedAt = new Date().toISOString();
+
+              // Add response message if provided
+              const replyText = parsed.reply || parsed.message || parsed.responseMessage;
+              if (replyText && replyText.trim()) {
+                const responseObj = {
+                  id: 'REP-' + Math.floor(100 + Math.random() * 900),
+                  authorName: user.name,
+                  authorRole: user.role,
+                  authorEmail: user.email,
+                  message: replyText.trim(),
+                  createdAt: new Date().toISOString()
+                };
+                if (!ticket.responses) ticket.responses = [];
+                ticket.responses.push(responseObj);
+
+                // Notify bidder if replied by Officer/Admin
+                if (user.role === 'OFFICER' || user.role === 'ADMIN') {
+                  if (!db.notifications) db.notifications = [];
+                  db.notifications.unshift({
+                    id: 'NTF-' + Math.floor(1000 + Math.random() * 9000),
+                    userId: ticket.vendorId || 'ALL',
+                    recipientEmail: ticket.userEmail || '',
+                    role: 'BIDDER',
+                    title: `Support Ticket Response: #${ticket.id}`,
+                    message: `${user.name} (${user.role}) replied to "${ticket.subject}": "${replyText.substring(0, 100)}..."`,
+                    type: 'Alert',
+                    read: false,
+                    timestamp: new Date().toISOString(),
+                    time: 'Just now'
+                  });
+                }
+              }
+
+              saveDb(db);
+              res.statusCode = 200;
+              res.end(JSON.stringify({ success: true, message: 'Support ticket updated', ticket }));
+            });
+            return;
+          }
         }
 
         next();
